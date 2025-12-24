@@ -67,8 +67,19 @@ actor ManagementAPIClient {
     
     func getOAuthURL(for provider: AIProvider, projectId: String? = nil) async throws -> OAuthURLResponse {
         var endpoint = provider.oauthEndpoint
+        var queryParams: [String] = []
+        
         if let projectId = projectId, provider == .gemini {
-            endpoint += "?project_id=\(projectId)"
+            queryParams.append("project_id=\(projectId)")
+        }
+        
+        let webUIProviders: [AIProvider] = [.antigravity, .claude, .codex, .gemini, .iflow]
+        if webUIProviders.contains(provider) {
+            queryParams.append("is_webui=true")
+        }
+        
+        if !queryParams.isEmpty {
+            endpoint += "?" + queryParams.joined(separator: "&")
         }
         
         let data = try await makeRequest(endpoint)

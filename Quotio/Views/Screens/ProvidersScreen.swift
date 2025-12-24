@@ -8,7 +8,6 @@ import SwiftUI
 struct ProvidersScreen: View {
     @Environment(QuotaViewModel.self) private var viewModel
     @State private var selectedProvider: AIProvider?
-    @State private var showingOAuthSheet = false
     @State private var projectId = ""
     
     var body: some View {
@@ -48,7 +47,6 @@ struct ProvidersScreen: View {
                     ForEach(AIProvider.allCases) { provider in
                         Button {
                             selectedProvider = provider
-                            showingOAuthSheet = true
                         } label: {
                             HStack {
                                 ProviderIcon(provider: provider, size: 24)
@@ -79,14 +77,12 @@ struct ProvidersScreen: View {
             }
         }
         .navigationTitle("nav.providers".localized())
-        .sheet(isPresented: $showingOAuthSheet) {
-            if let provider = selectedProvider {
-                OAuthSheet(provider: provider, projectId: $projectId) {
-                    showingOAuthSheet = false
-                    selectedProvider = nil
-                    projectId = ""
-                }
+        .sheet(item: $selectedProvider) { provider in
+            OAuthSheet(provider: provider, projectId: $projectId) {
+                selectedProvider = nil
+                projectId = ""
             }
+            .environment(viewModel)
         }
     }
 }
@@ -143,55 +139,186 @@ struct OAuthSheet: View {
     @Binding var projectId: String
     let onDismiss: () -> Void
     
+    @State private var hasStartedAuth = false
+    
+    private var isPolling: Bool {
+        viewModel.oauthState?.status == .polling || viewModel.oauthState?.status == .waiting
+    }
+    
+    private var isSuccess: Bool {
+        viewModel.oauthState?.status == .success
+    }
+    
+    private var isError: Bool {
+        viewModel.oauthState?.status == .error
+    }
+    
     var body: some View {
-        VStack(spacing: 24) {
-            ProviderIcon(provider: provider, size: 48)
+        VStack(spacing: 28) {
+            ProviderIcon(provider: provider, size: 64)
             
-            Text("providers.connect".localized() + " \(provider.displayName)")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text(provider.displayName)
-                .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                Text("oauth.connect".localized() + " " + provider.displayName)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text("oauth.authenticateWith".localized() + " " + provider.displayName)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             
             if provider == .gemini {
-                TextField("providers.projectIdOptional".localized(), text: $projectId)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 300)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("oauth.projectId".localized())
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    TextField("oauth.projectIdPlaceholder".localized(), text: $projectId)
+                        .textFieldStyle(.roundedBorder)
+                }
+                .frame(maxWidth: 320)
             }
             
             if let state = viewModel.oauthState, state.provider == provider {
-                switch state.status {
-                case .waiting, .polling:
-                    ProgressView("providers.waitingAuth".localized())
-                    
-                case .success:
-                    Label("providers.connectedSuccess".localized(), systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    
-                case .error:
-                    Label(state.error ?? "providers.authFailed".localized(), systemImage: "xmark.circle.fill")
-                        .foregroundStyle(.red)
-                }
+                OAuthStatusView(status: state.status, error: state.error, provider: provider)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
             
             HStack(spacing: 16) {
-                Button("providers.cancel".localized(), role: .cancel) {
+                Button("action.cancel".localized(), role: .cancel) {
                     onDismiss()
                 }
                 .buttonStyle(.bordered)
+                .disabled(isPolling)
                 
-                Button("providers.authenticate".localized()) {
-                    Task {
-                        await viewModel.startOAuth(for: provider, projectId: projectId.isEmpty ? nil : projectId)
+                if isError {
+                    Button {
+                        hasStartedAuth = false
+                        Task {
+                            await viewModel.startOAuth(for: provider, projectId: projectId.isEmpty ? nil : projectId)
+                        }
+                    } label: {
+                        Label("oauth.retry".localized(), systemImage: "arrow.clockwise")
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                } else if !isSuccess {
+                    Button {
+                        hasStartedAuth = true
+                        Task {
+                            await viewModel.startOAuth(for: provider, projectId: projectId.isEmpty ? nil : projectId)
+                        }
+                    } label: {
+                        if isPolling {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label("oauth.authenticate".localized(), systemImage: "key.fill")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(provider.color)
+                    .disabled(isPolling)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(provider.color)
-                .disabled(viewModel.oauthState?.status == .polling)
             }
         }
         .padding(40)
-        .frame(width: 450)
+        .frame(width: 480, height: 400)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.oauthState?.status)
+        .onChange(of: viewModel.oauthState?.status) { _, newStatus in
+            if newStatus == .success {
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    onDismiss()
+                }
+            }
+        }
+    }
+}
+
+private struct OAuthStatusView: View {
+    let status: OAuthState.OAuthStatus
+    let error: String?
+    let provider: AIProvider
+    
+    var body: some View {
+        Group {
+            switch status {
+            case .waiting:
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("oauth.openingBrowser".localized())
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 16)
+                
+            case .polling:
+                VStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .stroke(provider.color.opacity(0.2), lineWidth: 4)
+                            .frame(width: 60, height: 60)
+                        
+                        Circle()
+                            .trim(from: 0, to: 0.7)
+                            .stroke(provider.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 60, height: 60)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: UUID())
+                        
+                        Image(systemName: "person.badge.key.fill")
+                            .font(.title2)
+                            .foregroundStyle(provider.color)
+                    }
+                    
+                    Text("oauth.waitingForAuth".localized())
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    Text("oauth.completeBrowser".localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 16)
+                
+            case .success:
+                VStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.green)
+                    
+                    Text("oauth.success".localized())
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                    
+                    Text("oauth.closingSheet".localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 16)
+                
+            case .error:
+                VStack(spacing: 12) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.red)
+                    
+                    Text("oauth.failed".localized())
+                        .font(.headline)
+                        .foregroundStyle(.red)
+                    
+                    if let error = error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 300)
+                    }
+                }
+                .padding(.vertical, 16)
+            }
+        }
+        .frame(height: 120)
     }
 }

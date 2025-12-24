@@ -168,6 +168,21 @@ struct LocalizedStrings {
         "subscription.freeTier": [.english: "Free Tier", .vietnamese: "Gói miễn phí"],
         "subscription.proPlan": [.english: "Pro Plan", .vietnamese: "Gói Pro"],
         "subscription.project": [.english: "Project", .vietnamese: "Dự án"],
+        
+        // OAuth
+        "oauth.connect": [.english: "Connect", .vietnamese: "Kết nối"],
+        "oauth.authenticateWith": [.english: "Authenticate with your", .vietnamese: "Xác thực với tài khoản"],
+        "oauth.projectId": [.english: "Project ID (optional)", .vietnamese: "ID dự án (tùy chọn)"],
+        "oauth.projectIdPlaceholder": [.english: "Enter project ID...", .vietnamese: "Nhập ID dự án..."],
+        "oauth.authenticate": [.english: "Authenticate", .vietnamese: "Xác thực"],
+        "oauth.retry": [.english: "Try Again", .vietnamese: "Thử lại"],
+        "oauth.openingBrowser": [.english: "Opening browser...", .vietnamese: "Đang mở trình duyệt..."],
+        "oauth.waitingForAuth": [.english: "Waiting for authentication", .vietnamese: "Đang chờ xác thực"],
+        "oauth.completeBrowser": [.english: "Complete the login in your browser", .vietnamese: "Hoàn tất đăng nhập trong trình duyệt"],
+        "oauth.success": [.english: "Connected successfully!", .vietnamese: "Kết nối thành công!"],
+        "oauth.closingSheet": [.english: "Closing...", .vietnamese: "Đang đóng..."],
+        "oauth.failed": [.english: "Authentication failed", .vietnamese: "Xác thực thất bại"],
+        "oauth.timeout": [.english: "Authentication timeout", .vietnamese: "Hết thời gian xác thực"],
     ]
     
     static func get(_ key: String, language: AppLanguage) -> String {
