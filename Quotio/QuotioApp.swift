@@ -3,6 +3,7 @@
 //  Quotio - CLIProxyAPI GUI Wrapper
 //
 
+import AppKit
 import SwiftUI
 import ServiceManagement
 #if canImport(Sparkle)
@@ -11,6 +12,7 @@ import Sparkle
 
 @main
 struct QuotioApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var viewModel = QuotaViewModel()
     @State private var menuBarSettings = MenuBarSettingsManager.shared
     @State private var statusBarManager = StatusBarManager.shared
@@ -112,6 +114,67 @@ struct QuotioApp: App {
                 .disabled(!updaterService.canCheckForUpdates)
             }
             #endif
+        }
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var windowWillCloseObserver: NSObjectProtocol?
+    private var windowDidBecomeKeyObserver: NSObjectProtocol?
+    
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        windowWillCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleWindowWillClose(notification)
+        }
+        
+        windowDidBecomeKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleWindowDidBecomeKey(notification)
+        }
+    }
+    
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+    
+    private func handleWindowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        guard window.title == "Quotio" else { return }
+        
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+    }
+    
+    private func handleWindowWillClose(_ notification: Notification) {
+        guard let closingWindow = notification.object as? NSWindow else { return }
+        guard closingWindow.title == "Quotio" else { return }
+        
+        let remainingWindows = NSApp.windows.filter { window in
+            window != closingWindow &&
+                window.title == "Quotio" &&
+                window.isVisible &&
+                !window.isMiniaturized
+        }
+        
+        if remainingWindows.isEmpty {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+    
+    deinit {
+        if let observer = windowWillCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = windowDidBecomeKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 }
